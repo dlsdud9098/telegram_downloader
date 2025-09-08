@@ -136,22 +136,31 @@ class OverlayWindow:
             
             # Try to set window properties using xprop if available
             import subprocess
-            window_id = pygame.display.get_wm_info()["window"]
-            
-            # Make window stay on top
-            subprocess.run([
-                "wmctrl", "-i", "-r", str(window_id),
-                "-b", "add,above"
-            ], capture_output=True)
-            
-            # Set window type to utility (makes it float and removes decorations)
-            subprocess.run([
-                "xprop", "-id", str(window_id),
-                "-f", "_NET_WM_WINDOW_TYPE", "32a",
-                "-set", "_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_UTILITY"
-            ], capture_output=True)
+            try:
+                window_id = pygame.display.get_wm_info()["window"]
+                
+                # Try wmctrl if available
+                try:
+                    subprocess.run([
+                        "wmctrl", "-i", "-r", str(window_id),
+                        "-b", "add,above"
+                    ], capture_output=True, check=True)
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    pass  # wmctrl not available, skip
+                
+                # Try xprop if available
+                try:
+                    subprocess.run([
+                        "xprop", "-id", str(window_id),
+                        "-f", "_NET_WM_WINDOW_TYPE", "32a",
+                        "-set", "_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_UTILITY"
+                    ], capture_output=True, check=True)
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    pass  # xprop not available, skip
+            except:
+                pass  # Window info not available
         except Exception as e:
-            print(f"Linux overlay setup warning: {e}")
+            pass  # Silently ignore overlay setup errors
     
     def _setup_macos_overlay(self, screen):
         # macOS specific setup if needed

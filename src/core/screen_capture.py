@@ -30,9 +30,9 @@ class ScreenCapture:
             screen_width = monitor["width"]
             screen_height = monitor["height"]
             
-            # Create fullscreen transparent window
+            # Create fullscreen window with transparency
             screen = pygame.display.set_mode((screen_width, screen_height), 
-                                            pygame.NOFRAME)
+                                            pygame.FULLSCREEN)
             pygame.display.set_caption("Select Region")
             
             # Make window transparent

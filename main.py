@@ -86,7 +86,7 @@ class TelegramDownloader:
         self.automation.stop()
         self.capture.stop_continuous_capture()
         
-        if self.processing_thread:
+        if self.processing_thread and self.processing_thread != threading.current_thread():
             self.processing_thread.join(timeout=1)
         
         self.control_panel.set_status("Automation stopped")
