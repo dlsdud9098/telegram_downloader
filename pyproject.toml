@@ -5,63 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    # CPU 버전을 기본으로 설정
-    "torch>=2.7.1",
-    "torchvision>=0.22.1", 
-    "torchaudio>=2.7.1",
+    "opencv-python>=4.8.0",
+    "pygame>=2.5.0",
+    "pygame-gui>=0.6.0",
+    "pyautogui>=0.9.54",
+    "mss>=9.0.0",
+    "numpy>=1.24.0",
+    "Pillow>=10.0.0",
 ]
 
-[project.optional-dependencies]
-# CUDA 11.8 버전
-cuda118 = [
-    "torch>=2.7.1",
-    "torchvision>=0.22.1",
-    "torchaudio>=2.7.1",
-]
 
-# CUDA 12.1 버전  
-cuda121 = [
-    "torch>=2.7.1",
-    "torchvision>=0.22.1", 
-    "torchaudio>=2.7.1",
-]
-
-# CUDA 12.4 버전
-cuda124 = [
-    "torch>=2.7.1",
-    "torchvision>=0.22.1",
-    "torchaudio>=2.7.1", 
-]
-
-# CPU 전용 버전
-cpu = [
-    "torch>=2.7.1",
-    "torchvision>=0.22.1",
-    "torchaudio>=2.7.1",
-]
-
-[tool.uv.sources]
-# 기본 CPU 버전
-torch = { index = "pytorch-cpu" }
-torchvision = { index = "pytorch-cpu" } 
-torchaudio = { index = "pytorch-cpu" }
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu118"
-url = "https://download.pytorch.org/whl/cu118"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu121" 
-url = "https://download.pytorch.org/whl/cu121"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
-explicit = true
