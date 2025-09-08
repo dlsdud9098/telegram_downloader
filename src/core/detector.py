@@ -24,7 +24,7 @@ class ImageDetector:
     def __init__(self, template_dir: str = "images"):
         self.template_dir = Path(template_dir)
         self.templates = self._load_templates()
-        self.detection_threshold = 0.9  # 90% match as per requirements
+        self.detection_threshold = 0.7  # Lower threshold for better detection
         
     def _load_templates(self) -> Dict[DownloadState, np.ndarray]:
         templates = {}

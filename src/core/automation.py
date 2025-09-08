@@ -99,7 +99,10 @@ class AutomationController:
                          if d.state == DownloadState.NOT_DOWNLOADED]
         
         if not not_downloaded:
+            print("No 'not downloaded' images found")
             return
+        
+        print(f"Found {len(not_downloaded)} not downloaded images")
         
         # Sort by position (top to bottom, left to right)
         not_downloaded.sort(key=lambda d: (d.center[1], d.center[0]))
@@ -110,13 +113,17 @@ class AutomationController:
         click_y = self.region_offset[1] + detection.center[1]
         
         try:
+            print(f"Moving to ({click_x}, {click_y}) and clicking...")
             # Move to position and click
             pyautogui.moveTo(click_x, click_y, duration=0.1)
+            time.sleep(0.1)  # Small delay before click
             pyautogui.click()
             self.last_click_time = current_time
-            print(f"Clicked at ({click_x}, {click_y})")
+            print(f"Successfully clicked at ({click_x}, {click_y})")
         except Exception as e:
             print(f"Click error: {e}")
+            import traceback
+            traceback.print_exc()
     
     def scroll_down(self):
         current_time = time.time()

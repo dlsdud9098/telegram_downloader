@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.core.detector import ImageDetector
 from src.core.screen_capture import ScreenCapture
 from src.core.automation import AutomationController, AutomationConfig
-from src.ui.overlay import OverlayWindow
+from src.ui.border_overlay import BorderOverlay
 from src.ui.control_panel_tk import ControlPanelTk
 
 
@@ -54,8 +54,8 @@ class TelegramDownloader:
                 region["top"]
             )
             
-            # Create new overlay
-            self.overlay = OverlayWindow(region)
+            # Create new border overlay (like Bandicam)
+            self.overlay = BorderOverlay(region)
             self.overlay.start()
             
             self.control_panel.set_status(
@@ -112,9 +112,11 @@ class TelegramDownloader:
                 # Detect images
                 detections = self.detector.detect_images(frame)
                 
-                # Update overlay
-                if self.overlay:
-                    self.overlay.update_detections(detections)
+                # Debug: Print detection info
+                if detections:
+                    print(f"Found {len(detections)} detections")
+                    for det in detections:
+                        print(f"  - {det.state.value} at ({det.center[0]}, {det.center[1]}) confidence: {det.confidence:.2f}")
                 
                 # Execute automation
                 stats = self.automation.execute_automation(detections)
@@ -130,10 +132,12 @@ class TelegramDownloader:
                         "Stopped: Download threshold reached"
                     )
                 
-                time.sleep(0.1)  # Small delay to prevent CPU overload
+                time.sleep(0.2)  # Slightly longer delay for stability
                 
             except Exception as e:
                 print(f"Processing error: {e}")
+                import traceback
+                traceback.print_exc()
                 time.sleep(0.5)
     
     def run(self):
