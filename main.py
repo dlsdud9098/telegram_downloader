@@ -36,9 +36,15 @@ class TelegramDownloader:
     def select_region(self):
         self.control_panel.set_status("Selecting region...")
         
+        # Stop automation if running
+        if self.is_processing:
+            self.stop_automation()
+        
         # Stop any existing overlay
         if self.overlay:
             self.overlay.stop()
+            self.overlay = None
+            time.sleep(0.5)  # Give time for overlay to close
             
         # Select region
         region = self.capture.start_region_selection()

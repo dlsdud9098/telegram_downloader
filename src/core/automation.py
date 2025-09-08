@@ -26,8 +26,8 @@ class AutomationController:
         self.region_offset = (0, 0)  # Offset from screen origin
         
         # Configure pyautogui
-        pyautogui.FAILSAFE = True
-        pyautogui.PAUSE = 0.1
+        pyautogui.FAILSAFE = False  # Disable failsafe for better automation
+        pyautogui.PAUSE = 0.05  # Smaller pause for faster response
         
     def set_region_offset(self, x: int, y: int):
         self.region_offset = (x, y)
