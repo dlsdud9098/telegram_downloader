@@ -142,15 +142,18 @@ class ControlPanelTk:
             # Hide main window temporarily
             self.root.withdraw()
             
-            def region_callback():
-                # Show window again after selection
-                self.root.after(100, self.root.deiconify)
-                if self.on_select_region:
-                    self.on_select_region()
-            
             # Run in thread to avoid blocking
-            thread = threading.Thread(target=region_callback)
+            thread = threading.Thread(target=self._do_select_region)
+            thread.daemon = True
             thread.start()
+    
+    def _do_select_region(self):
+        try:
+            if self.on_select_region:
+                self.on_select_region()
+        finally:
+            # Show window again after selection
+            self.root.after(100, self.root.deiconify)
     
     def _on_start_stop(self):
         if self.state.is_running:
