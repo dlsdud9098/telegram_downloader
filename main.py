@@ -12,7 +12,7 @@ from src.core.detector import ImageDetector
 from src.core.screen_capture import ScreenCapture
 from src.core.automation import AutomationController, AutomationConfig
 from src.ui.overlay import OverlayWindow
-from src.ui.control_panel import ControlPanel
+from src.ui.control_panel_tk import ControlPanelTk
 
 
 class TelegramDownloader:
@@ -21,7 +21,7 @@ class TelegramDownloader:
         self.capture = ScreenCapture()
         self.automation = AutomationController()
         self.overlay = None
-        self.control_panel = ControlPanel()
+        self.control_panel = ControlPanelTk()
         self.processing_thread = None
         self.is_processing = False
         
@@ -39,44 +39,30 @@ class TelegramDownloader:
         # Stop any existing overlay
         if self.overlay:
             self.overlay.stop()
-        
-        # Hide control panel temporarily
-        self.control_panel.screen.set_alpha(0)
-        
+            
         # Select region
-        def on_region_selected(region):
-            if region:
-                self.capture.set_region(
-                    region["left"], 
-                    region["top"],
-                    region["width"], 
-                    region["height"]
-                )
-                self.automation.set_region_offset(
-                    region["left"],
-                    region["top"]
-                )
-                
-                # Create new overlay
-                self.overlay = OverlayWindow(region)
-                self.overlay.start()
-                
-                self.control_panel.set_status(
-                    f"Region selected: {region['width']}x{region['height']}"
-                )
-            else:
-                self.control_panel.set_status("Region selection cancelled")
-        
-        # Start region selection in thread
-        selection_thread = threading.Thread(
-            target=lambda: on_region_selected(
-                self.capture.start_region_selection()
+        region = self.capture.start_region_selection()
+        if region:
+            self.capture.set_region(
+                region["left"], 
+                region["top"],
+                region["width"], 
+                region["height"]
             )
-        )
-        selection_thread.start()
-        
-        # Show control panel again
-        self.control_panel.screen.set_alpha(255)
+            self.automation.set_region_offset(
+                region["left"],
+                region["top"]
+            )
+            
+            # Create new overlay
+            self.overlay = OverlayWindow(region)
+            self.overlay.start()
+            
+            self.control_panel.set_status(
+                f"Region selected: {region['width']}x{region['height']}"
+            )
+        else:
+            self.control_panel.set_status("Region selection cancelled")
     
     def start_automation(self):
         if not self.capture.get_region():
@@ -162,8 +148,13 @@ class TelegramDownloader:
 
 
 def main():
-    app = TelegramDownloader()
-    app.run()
+    try:
+        app = TelegramDownloader()
+        app.run()
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
