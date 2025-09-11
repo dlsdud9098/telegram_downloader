@@ -194,7 +194,7 @@ class ControlPanel:
         
         instructions = ctk.CTkLabel(
             instruction_frame,
-            text="Instructions:\n1. Use Select Region button to define detection area\n2. Open Telegram app and navigate to channel\n3. Click Start button\n4. Automatically clicks not downloaded files and scrolls",
+            text="Instructions:\n1. Use Select Region button to define detection area\n2. Open Telegram app and navigate to channel\n3. Click Start button\n4. Automatically clicks not downloaded files and scrolls\n5. Press ESC key anytime to stop automation",
             font=ctk.CTkFont(size=10),
             justify="left",
             text_color="gray"

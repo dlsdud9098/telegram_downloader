@@ -12,6 +12,7 @@ if platform.system() == 'Windows':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 import time
 from threading import Thread, Event
+from pynput import keyboard
 from src.detector import ImageDetector
 from src.region_selector import RegionSelector
 from src.automation import AutomationController
@@ -26,6 +27,7 @@ class TelegramAutoDownloader:
         self.stop_event = Event()
         self.worker_thread = None
         self.selected_region = None
+        self.keyboard_listener = None
         
         # Settings
         self.settings = {
@@ -89,15 +91,21 @@ class TelegramAutoDownloader:
         print(f"Starting automation with region: {region}")
         self.selected_region = region
         self.stop_event.clear()
+        
+        # Start keyboard listener for ESC key
+        self._start_keyboard_listener()
+        
         self.worker_thread = Thread(target=self._automation_loop)
         self.worker_thread.daemon = True
         self.worker_thread.start()
         print("Worker thread started")
+        print("Press ESC key to stop automation at any time")
     
     def stop_automation(self):
         self.stop_event.set()
         if self.worker_thread:
             self.worker_thread.join(timeout=1)
+        self._stop_keyboard_listener()
     
     def _automation_loop(self):
         print("Automation loop started")
@@ -145,6 +153,31 @@ class TelegramAutoDownloader:
                 if self.ui:
                     self.ui.update_status(f"Error: {str(e)}")
                 time.sleep(1)
+    
+    def _start_keyboard_listener(self):
+        """Start listening for ESC key press"""
+        def on_press(key):
+            try:
+                if key == keyboard.Key.esc:
+                    print("\nESC key pressed - stopping automation...")
+                    self.stop_automation()
+                    if self.ui:
+                        self.ui.update_status("Stopped (ESC key)")
+                        self.ui.toggle_button.configure(text="Start")
+                        self.ui.is_running = False
+                    return False  # Stop listener
+            except:
+                pass
+        
+        # Start keyboard listener in non-blocking mode
+        self.keyboard_listener = keyboard.Listener(on_press=on_press)
+        self.keyboard_listener.start()
+    
+    def _stop_keyboard_listener(self):
+        """Stop the keyboard listener"""
+        if self.keyboard_listener:
+            self.keyboard_listener.stop()
+            self.keyboard_listener = None
     
     def update_settings(self, setting_name, value):
         self.settings[setting_name] = value
