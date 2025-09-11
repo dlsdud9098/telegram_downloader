@@ -1,0 +1,190 @@
+# -*- coding: utf-8 -*-
+import cv2
+import numpy as np
+from PIL import Image
+from typing import List, Tuple, Optional
+import mss
+import platform
+import os
+
+class ImageDetector:
+    def __init__(self):
+        self.templates = {}
+        
+    def load_templates(self, template_paths: dict):
+        print(f"Loading templates from: {template_paths}")
+        for name, path in template_paths.items():
+            # Convert path for Windows compatibility
+            if platform.system() == 'Windows':
+                path = path.replace('/', '\\')
+            
+            print(f"Attempting to load {name} from {path}")
+            if os.path.exists(path):
+                print(f"  File exists: {path}")
+                img = cv2.imread(path)
+                if img is not None:
+                    h, w = img.shape[:2]
+                    print(f"  Loaded successfully: {w}x{h} pixels")
+                    self.templates[name] = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                else:
+                    print(f"  ERROR: cv2.imread failed for {path}")
+            else:
+                print(f"  ERROR: File not found: {path}")
+                print(f"  Current directory: {os.getcwd()}")
+                print(f"  Directory contents: {os.listdir('.')}")
+    
+    def capture_region(self, region: dict) -> np.ndarray:
+        # Always create a new mss instance for each capture to avoid thread issues
+        try:
+            with mss.mss() as sct:
+                screenshot = sct.grab(region)
+                img = np.array(screenshot)
+                # Windows might need different color conversion
+                if platform.system() == 'Windows':
+                    return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                else:
+                    return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        except Exception as e:
+            print(f"Error capturing region: {e}")
+            raise
+    
+    def detect_images(self, region: dict, threshold: float = 0.5) -> dict:
+        screen = self.capture_region(region)
+        gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        screen_h, screen_w = gray_screen.shape
+        
+        # Platform-specific threshold adjustment
+        if platform.system() == 'Windows':
+            # Windows needs lower threshold due to rendering differences
+            threshold = threshold * 0.5  # Use 25% instead of 50%
+            print(f"Windows detected: Using lower threshold {threshold:.2f}")
+        
+        # Debug output for first detection
+        if not hasattr(self, '_first_detection_done'):
+            print(f"Screen capture size: {screen_w}x{screen_h}")
+            print(f"Number of templates loaded: {len(self.templates)}")
+            print(f"Platform: {platform.system()}")
+            print(f"Base threshold: {threshold:.2f}")
+            # Save captured screen for debugging
+            cv2.imwrite("debug_screen_capture.jpg", screen)
+            cv2.imwrite("debug_screen_gray.jpg", gray_screen)
+            print("Saved debug images: debug_screen_capture.jpg and debug_screen_gray.jpg")
+            self._first_detection_done = True
+        
+        results = {}
+        for name, template in self.templates.items():
+            h, w = template.shape
+            
+            # Skip if template is larger than the screen region
+            if h > screen_h or w > screen_w:
+                if not hasattr(self, f'_warned_{name}'):
+                    print(f"Warning: Template '{name}' ({w}x{h}) is larger than selected region ({screen_w}x{screen_h}). Skipping.")
+                    setattr(self, f'_warned_{name}', True)
+                results[name] = []
+                continue
+            
+            # Try multiple matching methods
+            methods = [
+                ('TM_CCOEFF_NORMED', cv2.TM_CCOEFF_NORMED),
+                ('TM_CCORR_NORMED', cv2.TM_CCORR_NORMED),
+                ('TM_SQDIFF_NORMED', cv2.TM_SQDIFF_NORMED)
+            ]
+            
+            best_score = 0
+            best_res = None
+            best_method = None
+            
+            for method_name, method in methods:
+                res = cv2.matchTemplate(gray_screen, template, method)
+                
+                if method == cv2.TM_SQDIFF_NORMED:
+                    # For SQDIFF, lower is better, so invert
+                    score = 1 - np.min(res)
+                else:
+                    score = np.max(res)
+                
+                if score > best_score:
+                    best_score = score
+                    best_res = res
+                    best_method = method_name
+            
+            # Use the best method result
+            res = best_res
+            
+            # Platform-specific threshold adjustment
+            if platform.system() == 'Windows':
+                # Windows needs even lower threshold for actual matching
+                actual_threshold = threshold * 0.6  # 60% of already lowered threshold
+            else:
+                actual_threshold = threshold * 0.7  # 70% for other platforms
+            
+            # Debug output - show all scores above 0.1 for debugging
+            if best_score > 0.1:
+                print(f"  {name}: best_score = {best_score:.3f} using {best_method} (threshold = {actual_threshold:.3f})")
+                
+                # Save template comparison for first detection
+                if not hasattr(self, f'_saved_{name}'):
+                    cv2.imwrite(f"debug_template_{name}.jpg", template)
+                    setattr(self, f'_saved_{name}', True)
+            
+            # For SQDIFF_NORMED, we need to find minimums
+            if best_method == 'TM_SQDIFF_NORMED':
+                loc = np.where(res <= 1 - actual_threshold)
+            else:
+                loc = np.where(res >= actual_threshold)
+            
+            matches = []
+            for pt in zip(*loc[::-1]):
+                center_x = pt[0] + w // 2 + region['left']
+                center_y = pt[1] + h // 2 + region['top']
+                matches.append((center_x, center_y))
+            
+            if matches:
+                matches = self._remove_duplicates(matches)
+            
+            results[name] = matches
+            
+        return results
+    
+    def _remove_duplicates(self, matches: List[Tuple[int, int]], threshold: int = 30) -> List[Tuple[int, int]]:
+        if not matches:
+            return []
+        
+        unique_matches = []
+        for match in matches:
+            is_duplicate = False
+            for unique in unique_matches:
+                if abs(match[0] - unique[0]) < threshold and abs(match[1] - unique[1]) < threshold:
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                unique_matches.append(match)
+        
+        return unique_matches
+    
+    def get_detection_stats(self, results: dict) -> dict:
+        # Count each type of image
+        not_downloaded_count = len(results.get('not_downloaded', []))
+        downloading_count = len(results.get('downloading', []))
+        downloaded_count = len(results.get('downloaded', []))
+        
+        # Total is sum of all detected images
+        total = not_downloaded_count + downloading_count + downloaded_count
+        
+        stats = {
+            'total': total,
+            'not_downloaded': not_downloaded_count,
+            'downloading': downloading_count,
+            'downloaded': downloaded_count,
+        }
+        
+        # Calculate percentage based on downloaded (completed) images only
+        if total > 0:
+            stats['downloaded_percentage'] = (downloaded_count / total) * 100
+            # Debug output
+            print(f"Stats - Total: {total}, Downloaded: {downloaded_count}, Downloading: {downloading_count}, Not Downloaded: {not_downloaded_count}")
+            print(f"Downloaded percentage: {stats['downloaded_percentage']:.1f}%")
+        else:
+            stats['downloaded_percentage'] = 0
+            
+        return stats

@@ -1,62 +1,167 @@
 # Telegram Auto Downloader
 
-Automated media download tool for Telegram Desktop with real-time visual feedback.
+텔레그램 채널에서 파일을 이미지 인식을 통해 자동으로 감지하고 다운로드합니다.
 
-## Features
+## 기능
 
-- Drag-and-drop region selection
-- Real-time image detection with visual overlay
-- Automatic clicking on undownloaded media
-- Smart scrolling based on download progress
-- Customizable automation parameters
-- Cross-platform support (Linux, Windows, macOS)
+- **크로스 플랫폼 지원** (Windows, macOS, Linux)
+- **시각적 영역 선택**으로 특정 영역 모니터링
+- **이미지 인식**을 통한 다운로드 상태 자동 감지
+- **스마트 스크롤링** - 대부분의 파일이 다운로드되면 자동 스크롤
+- **실시간 통계** 표시
+- **UI를 통한 설정 조절**:
+  - 스크롤 양 (1-20)
+  - 클릭 딜레이 (0.1-2.0초)
+  - 스크롤 임계값 (10-90%)
 
-## Installation
+## 설치
 
+### 필수 요구사항
+
+- Python 3.10 이상
+- 텔레그램 데스크톱 애플리케이션
+
+### 플랫폼별 요구사항
+
+#### Windows
+- 추가 요구사항 없음
+
+#### macOS
+- 터미널/Python에 접근성 권한 부여 필요
+- 시스템 환경설정 → 보안 및 개인 정보 보호 → 개인 정보 보호 → 접근성
+
+#### Linux (Ubuntu/Debian)
 ```bash
-# Install dependencies using uv
-uv sync
+sudo apt-get install python3-tk python3-dev
+sudo apt-get install scrot python3-xlib
+```
 
-# Or using pip
+### 의존성 설치
+
+#### pip 사용
+```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+#### uv 사용 (권장)
+```bash
+uv sync
+```
 
-1. Run the application:
+## 설정
+
+### 1. 템플릿 이미지 준비
+
+다운로드 버튼 상태에 대한 템플릿 이미지를 생성해야 합니다:
+
+1. 텔레그램 데스크톱 열기
+2. 다른 다운로드 상태를 가진 메시지 찾기
+3. 다운로드 아이콘만 스크린샷 찍기 (전체 메시지 아님):
+   - **not_download.jpg**: 다운로드 화살표 아이콘 (↓)
+   - **downloading.jpg**: 진행/로딩 원형 아이콘
+   - **downloaded.jpg**: 체크마크 또는 완료 아이콘
+
+4. 아이콘만 보이도록 이미지 자르기 (권장 크기: 40-60 픽셀)
+5. `images/` 폴더에 저장
+
+**팁**: 이미지가 너무 크면 포함된 `resize_templates.py` 스크립트 사용:
+```bash
+python resize_templates.py
+```
+
+## 사용법
+
+1. **애플리케이션 실행**:
 ```bash
 python main.py
 ```
 
-2. Click "Select Region" to choose the area to monitor
-3. Adjust settings as needed:
-   - Scroll Pixels: Amount to scroll each time
-   - Scroll Delay: Time between scrolls
-   - Click Delay: Time between clicks
-   - Detection Threshold: Image matching accuracy
+2. **감지 영역 선택**:
+   - "영역 선택" 버튼 클릭
+   - 텔레그램 메시지가 포함된 영역을 드래그하여 선택
+   - 영역이 충분히 큰지 확인 (최소 60x60 픽셀)
 
-4. Click "Start" to begin automation
+3. **설정 조절** (선택사항):
+   - **스크롤 양**: 한 번에 스크롤할 양
+   - **클릭 딜레이**: 여러 항목 클릭 시 간격
+   - **스크롤 임계값**: 스크롤 시작 기준 (다운로드 완료 % 기준)
 
-## Image Templates
+4. **자동화 시작**:
+   - 텔레그램을 열고 원하는 채널로 이동
+   - "시작" 버튼 클릭
+   - 앱이 자동으로:
+     - 다운로드되지 않은 파일 클릭
+     - 다운로드 비율이 임계값을 초과하면 스크롤
+     - 실시간으로 통계 업데이트
 
-Place the following images in the `images/` directory:
-- `not_download.jpg` - Icon for undownloaded media
-- `downloading.jpg` - Icon for media being downloaded
-- `downloaded.jpg` - Icon for completed downloads
+5. 언제든지 "정지" 버튼을 클릭하여 **중지**
 
-## Requirements
+## 작동 원리
 
-- Python 3.10+
-- OpenCV for image detection
-- Pygame for UI and overlay
-- PyAutoGUI for automation
-- MSS for screen capture
+1. **이미지 감지**: OpenCV 템플릿 매칭을 사용하여 다운로드 버튼 찾기
+2. **상태 인식**: 세 가지 상태 식별 - 미다운로드, 다운로드 중, 다운로드 완료
+3. **스마트 자동화**:
+   - 다운로드되지 않은 항목 클릭 우선
+   - 다운로드 비율이 임계값을 초과하면 스크롤
+   - 다운로드 비율이 임계값 아래로 떨어질 때까지 계속
 
-## How It Works
+## 설정 설명
 
-1. **Detection**: Uses template matching and feature detection to find download icons
-2. **Automation**: 
-   - Clicks on undownloaded media automatically
-   - Scrolls when >80% of visible media is downloaded
-   - Stops when <20% of visible media is downloaded
-3. **Visualization**: Shows real-time bounding boxes around detected images
+- **스크롤 양 (1-20)**: 
+  - 낮은 값 = 부드럽고 느린 스크롤
+  - 높은 값 = 빠르고 큰 스크롤 점프
+
+- **클릭 딜레이 (0.1-2.0초)**:
+  - 낮은 값 = 여러 항목을 빠르게 클릭
+  - 높은 값 = 텔레그램이 응답할 시간 더 확보
+
+- **스크롤 임계값 (10-90%)**:
+  - 낮은 값 = 더 적극적으로 스크롤
+  - 높은 값 = 더 많은 다운로드가 완료될 때까지 대기
+
+## 문제 해결
+
+### "템플릿이 선택한 영역보다 큽니다" 오류
+- 더 큰 영역 선택
+- 또는 더 작은 템플릿 이미지 생성 (40-60 픽셀)
+
+### "디스플레이를 찾을 수 없음" 오류 (Linux)
+```bash
+export DISPLAY=:0
+python main.py
+```
+
+### 권한 거부 (macOS)
+- 시스템 환경설정에서 접근성 권한 부여
+- 권한 부여 후 애플리케이션 재시작
+
+### 시작 버튼 클릭해도 아무 일도 일어나지 않음
+- 템플릿 이미지가 제대로 잘렸는지 확인
+- 선택한 영역에 다운로드 버튼이 포함되어 있는지 확인
+- 텔레그램 데스크톱이 보이고 최소화되지 않았는지 확인
+
+### 입력이 작동하지 않음 (Linux)
+```bash
+sudo usermod -a -G input $USER
+# 로그아웃 후 다시 로그인
+```
+
+## 플랫폼 참고사항
+
+### Windows
+- 권한 문제가 발생하면 관리자 권한으로 실행
+- Windows Defender가 PyAutoGUI를 표시할 수 있음 - 이는 거짓 긍정
+
+### macOS  
+- 첫 실행 시 접근성 권한 요청
+- 권한 부여 후 애플리케이션 재시작이 필요할 수 있음
+- macOS용으로 스크롤 동작이 자동 조정됨
+
+### Linux
+- X11 필요 (XWayland 없이 Wayland와 호환되지 않음)
+- 입력 시뮬레이션을 위해 sudo로 실행이 필요할 수 있음
+- SSH를 통해 실행하는 경우 DISPLAY 환경 변수 설정
+
+## 라이선스
+
+MIT

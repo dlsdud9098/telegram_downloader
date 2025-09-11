@@ -1,171 +1,174 @@
 #!/usr/bin/env python3
-
+# -*- coding: utf-8 -*-
+import os
 import sys
+import io
+import platform
+import cv2
+
+# Set UTF-8 encoding for stdout and stderr (for Windows compatibility)
+if platform.system() == 'Windows':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 import time
-import threading
-from pathlib import Path
+from threading import Thread, Event
+from src.detector import ImageDetector
+from src.region_selector import RegionSelector
+from src.automation import AutomationController
+from src.ui import ControlPanel
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from src.core.detector import ImageDetector
-from src.core.screen_capture import ScreenCapture
-from src.core.automation import AutomationController, AutomationConfig
-from src.ui.border_overlay import BorderOverlay
-from src.ui.control_panel_tk import ControlPanelTk
-
-
-class TelegramDownloader:
+class TelegramAutoDownloader:
     def __init__(self):
         self.detector = ImageDetector()
-        self.capture = ScreenCapture()
+        self.selector = RegionSelector()
         self.automation = AutomationController()
-        self.overlay = None
-        self.control_panel = ControlPanelTk()
-        self.processing_thread = None
-        self.is_processing = False
+        self.ui = None
+        self.stop_event = Event()
+        self.worker_thread = None
+        self.selected_region = None
         
-        # Setup callbacks
-        self.control_panel.set_callbacks(
+        # Settings
+        self.settings = {
+            'scroll_amount': 3,
+            'click_delay': 0.2,
+            'scroll_threshold': 20
+        }
+        
+        # Load image templates
+        template_paths = {
+            'not_downloaded': 'images/not_download.jpg',
+            'downloading': 'images/downloading.jpg',
+            'downloaded': 'images/downloaded.jpg'
+        }
+        
+        # Check if image files exist and get sizes
+        print(f"Current working directory: {os.getcwd()}")
+        print(f"Looking for images in: {template_paths}")
+        
+        template_sizes = {}
+        for name, path in template_paths.items():
+            # Use absolute path for better compatibility
+            abs_path = os.path.abspath(path)
+            print(f"Checking {name}: {abs_path}")
+            
+            if not os.path.exists(abs_path):
+                print(f"WARNING: {abs_path} file not found!")
+                # Try alternative paths
+                alt_paths = [
+                    path,
+                    os.path.join(os.path.dirname(__file__), path),
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+                ]
+                for alt_path in alt_paths:
+                    if os.path.exists(alt_path):
+                        print(f"  Found at alternative path: {alt_path}")
+                        template_paths[name] = alt_path
+                        abs_path = alt_path
+                        break
+            
+            if os.path.exists(abs_path):
+                img = cv2.imread(abs_path)
+                if img is not None:
+                    h, w = img.shape[:2]
+                    template_sizes[name] = (w, h)
+                    print(f"  SUCCESS: Loaded '{name}': {w}x{h} pixels")
+                else:
+                    print(f"  ERROR: Could not read image file {abs_path}")
+        
+        if template_sizes:
+            max_width = max(size[0] for size in template_sizes.values())
+            max_height = max(size[1] for size in template_sizes.values())
+            print(f"\nIMPORTANT: Select a region at least {max_width}x{max_height} pixels for detection to work properly.\n")
+        
+        self.detector.load_templates(template_paths)
+        
+    def select_region(self):
+        return self.selector.select_region()
+    
+    def start_automation(self, region):
+        print(f"Starting automation with region: {region}")
+        self.selected_region = region
+        self.stop_event.clear()
+        self.worker_thread = Thread(target=self._automation_loop)
+        self.worker_thread.daemon = True
+        self.worker_thread.start()
+        print("Worker thread started")
+    
+    def stop_automation(self):
+        self.stop_event.set()
+        if self.worker_thread:
+            self.worker_thread.join(timeout=1)
+    
+    def _automation_loop(self):
+        print("Automation loop started")
+        while not self.stop_event.is_set():
+            try:
+                # Detect images
+                print(f"Detecting in region: {self.selected_region}")
+                results = self.detector.detect_images(self.selected_region)
+                stats = self.detector.get_detection_stats(results)
+                print(f"Detection results: {results}")
+                
+                # UI 업데이트
+                if self.ui:
+                    self.ui.update_stats(stats)
+                    
+                    if results['not_downloaded']:
+                        self.ui.update_status(f"Clicking {len(results['not_downloaded'])} not downloaded items...")
+                    elif stats['downloaded_percentage'] >= 20:
+                        self.ui.update_status(f"Completion {stats['downloaded_percentage']:.1f}% - Scrolling...")
+                    else:
+                        self.ui.update_status("Detecting...")
+                
+                # Perform automation with settings
+                action_performed = self.automation.perform_automation(
+                    results, stats, 
+                    scroll_amount=self.settings['scroll_amount'],
+                    click_delay=self.settings['click_delay'],
+                    scroll_threshold=self.settings['scroll_threshold']
+                )
+                
+                # Wait briefly after action
+                if action_performed:
+                    # Shorter wait for continuous scrolling
+                    if stats.get('downloaded_percentage', 0) >= 20 and not results.get('not_downloaded'):
+                        time.sleep(0.5)  # Quick check during scrolling
+                    else:
+                        time.sleep(1)  # Normal wait after clicking
+                else:
+                    time.sleep(0.5)  # Faster detection cycle
+                    
+            except Exception as e:
+                import traceback
+                print(f"Error occurred: {e}")
+                print(f"Traceback: {traceback.format_exc()}")
+                if self.ui:
+                    self.ui.update_status(f"Error: {str(e)}")
+                time.sleep(1)
+    
+    def update_settings(self, setting_name, value):
+        self.settings[setting_name] = value
+        print(f"Updated {setting_name} to {value}")
+    
+    def run(self):
+        self.ui = ControlPanel(
             on_select_region=self.select_region,
             on_start=self.start_automation,
             on_stop=self.stop_automation,
-            on_config_change=self.update_config
+            on_settings_changed=self.update_settings
         )
-    
-    def select_region(self):
-        self.control_panel.set_status("Selecting region...")
-        
-        # Stop automation if running
-        if self.is_processing:
-            self.stop_automation()
-        
-        # Stop any existing overlay
-        if self.overlay:
-            self.overlay.stop()
-            self.overlay = None
-            time.sleep(0.5)  # Give time for overlay to close
-            
-        # Select region
-        region = self.capture.start_region_selection()
-        if region:
-            self.capture.set_region(
-                region["left"], 
-                region["top"],
-                region["width"], 
-                region["height"]
-            )
-            self.automation.set_region_offset(
-                region["left"],
-                region["top"]
-            )
-            
-            # Create new border overlay (like Bandicam)
-            self.overlay = BorderOverlay(region)
-            self.overlay.start()
-            
-            self.control_panel.set_status(
-                f"Region selected: {region['width']}x{region['height']}"
-            )
-        else:
-            self.control_panel.set_status("Region selection cancelled")
-    
-    def start_automation(self):
-        if not self.capture.get_region():
-            self.control_panel.set_status("Please select a region first")
-            self.control_panel.stop()
-            return
-        
-        self.is_processing = True
-        self.automation.start()
-        self.capture.start_continuous_capture(fps=5)
-        
-        # Start processing thread
-        self.processing_thread = threading.Thread(target=self._processing_loop)
-        self.processing_thread.daemon = True
-        self.processing_thread.start()
-        
-        self.control_panel.set_status("Automation running...")
-    
-    def stop_automation(self):
-        self.is_processing = False
-        self.automation.stop()
-        self.capture.stop_continuous_capture()
-        
-        if self.processing_thread and self.processing_thread != threading.current_thread():
-            self.processing_thread.join(timeout=1)
-        
-        self.control_panel.set_status("Automation stopped")
-    
-    def update_config(self, state):
-        self.automation.update_config(
-            scroll_pixels=state.scroll_pixels,
-            scroll_delay=state.scroll_delay,
-            click_delay=state.click_delay,
-            detection_threshold=state.detection_threshold
-        )
-        self.detector.set_threshold(state.detection_threshold)
-    
-    def _processing_loop(self):
-        while self.is_processing:
-            try:
-                # Get current frame
-                frame = self.capture.get_current_frame()
-                if frame is None:
-                    time.sleep(0.1)
-                    continue
-                
-                # Detect images
-                detections = self.detector.detect_images(frame)
-                
-                # Debug: Print detection info
-                if detections:
-                    print(f"Found {len(detections)} detections")
-                    for det in detections:
-                        print(f"  - {det.state.value} at ({det.center[0]}, {det.center[1]}) confidence: {det.confidence:.2f}")
-                
-                # Execute automation
-                stats = self.automation.execute_automation(detections)
-                
-                # Update UI stats
-                self.control_panel.update_stats(stats)
-                
-                # Check if we should stop
-                if self.automation.should_stop(stats):
-                    self.control_panel.stop()
-                    self.stop_automation()
-                    self.control_panel.set_status(
-                        "Stopped: Download threshold reached"
-                    )
-                
-                time.sleep(0.2)  # Slightly longer delay for stability
-                
-            except Exception as e:
-                print(f"Processing error: {e}")
-                import traceback
-                traceback.print_exc()
-                time.sleep(0.5)
-    
-    def run(self):
-        try:
-            # Run control panel (blocks until closed)
-            self.control_panel.run()
-        finally:
-            # Cleanup
-            self.stop_automation()
-            if self.overlay:
-                self.overlay.stop()
-
+        self.ui.run()
 
 def main():
     try:
-        app = TelegramDownloader()
+        app = TelegramAutoDownloader()
         app.run()
+    except KeyboardInterrupt:
+        print("\nExiting program.")
+        sys.exit(0)
     except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
-
+        print(f"Fatal error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
