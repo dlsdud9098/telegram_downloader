@@ -118,28 +118,40 @@ class ImageDetector:
                 results[name] = []
                 continue
             
-            # Platform-specific threshold adjustment
-            if platform.system() == 'Windows':
-                # Windows needs even lower threshold for actual matching
-                actual_threshold = threshold * 0.6  # 60% of already lowered threshold
-            else:
-                actual_threshold = threshold * 0.7  # 70% for other platforms
-            
             # Debug output - show all scores above 0.1 for debugging
             if best_score > 0.1:
-                print(f"  {name}: best_score = {best_score:.3f} using {best_method} (threshold = {actual_threshold:.3f})")
+                print(f"  {name}: best_score = {best_score:.3f} using {best_method}")
                 
                 # Save template comparison for first detection
                 if not hasattr(self, f'_saved_{name}'):
                     cv2.imwrite(f"debug_template_{name}.jpg", template)
                     setattr(self, f'_saved_{name}', True)
             
+            # For template matching, we need to be more selective
+            # TM_CCORR_NORMED tends to have very high baseline values
+            if best_method == 'TM_CCORR_NORMED':
+                # For CCORR, use a much higher threshold
+                actual_threshold = 0.95  # Very high threshold for CCORR
+            elif best_method == 'TM_CCOEFF_NORMED':
+                # For CCOEFF, use moderate threshold
+                actual_threshold = 0.6
+            elif best_method_type == cv2.TM_SQDIFF_NORMED:
+                # For SQDIFF, use low threshold (inverted)
+                actual_threshold = 0.2
+            else:
+                # Default threshold
+                actual_threshold = 0.7
+            
+            if not hasattr(self, f'_thresh_debug_{name}'):
+                print(f"    Using threshold: {actual_threshold:.3f} for method {best_method}")
+                setattr(self, f'_thresh_debug_{name}', True)
+            
             # For SQDIFF_NORMED, we need to find minimums
             if best_method_type == cv2.TM_SQDIFF_NORMED:
                 # For SQDIFF, find values below threshold (lower is better in original res)
-                loc = np.where(res <= (1 - actual_threshold))
+                loc = np.where(res <= actual_threshold)
                 if not hasattr(self, f'_debug_{name}'):
-                    print(f"    SQDIFF: Looking for values <= {1-actual_threshold:.3f}")
+                    print(f"    SQDIFF: Looking for values <= {actual_threshold:.3f}")
                     print(f"    Min value in res: {np.min(res):.3f}, Max: {np.max(res):.3f}")
                     setattr(self, f'_debug_{name}', True)
             else:
@@ -152,15 +164,42 @@ class ImageDetector:
                     setattr(self, f'_debug_{name}', True)
             
             matches = []
-            for pt in zip(*loc[::-1]):
+            raw_points = list(zip(*loc[::-1]))
+            
+            # Debug: show raw match count
+            if raw_points and not hasattr(self, f'_raw_debug_{name}'):
+                print(f"    Raw matches found: {len(raw_points)}")
+                if len(raw_points) > 100:
+                    print(f"    WARNING: Too many matches! This might be a false positive.")
+                    # Only take the top matches based on actual scores
+                    if len(raw_points) > 50:
+                        # Get scores for each point and sort by score
+                        point_scores = []
+                        for pt in raw_points[:1000]:  # Limit to first 1000 to avoid memory issues
+                            if pt[1] < res.shape[0] and pt[0] < res.shape[1]:
+                                point_scores.append((pt, res[pt[1], pt[0]]))
+                        
+                        # Sort by score (higher is better for non-SQDIFF methods)
+                        if best_method_type == cv2.TM_SQDIFF_NORMED:
+                            point_scores.sort(key=lambda x: x[1])  # Lower is better
+                        else:
+                            point_scores.sort(key=lambda x: x[1], reverse=True)  # Higher is better
+                        
+                        # Take only top 20 matches
+                        raw_points = [ps[0] for ps in point_scores[:20]]
+                        print(f"    Reduced to top 20 matches by score")
+                setattr(self, f'_raw_debug_{name}', True)
+            
+            for pt in raw_points:
                 center_x = pt[0] + w // 2 + region['left']
                 center_y = pt[1] + h // 2 + region['top']
                 matches.append((center_x, center_y))
             
             if matches:
+                before_dedup = len(matches)
                 matches = self._remove_duplicates(matches)
                 if matches:  # After removing duplicates
-                    print(f"    Found {len(matches)} {name} image(s)")
+                    print(f"    Found {len(matches)} {name} image(s) (was {before_dedup} before deduplication)")
             
             results[name] = matches
             
