@@ -93,6 +93,7 @@ class ImageDetector:
             best_score = 0
             best_res = None
             best_method = None
+            best_method_type = None
             
             for method_name, method in methods:
                 res = cv2.matchTemplate(gray_screen, template, method)
@@ -105,11 +106,17 @@ class ImageDetector:
                 
                 if score > best_score:
                     best_score = score
-                    best_res = res
+                    best_res = res.copy()  # Make a copy to ensure we keep the result
                     best_method = method_name
+                    best_method_type = method
             
             # Use the best method result
             res = best_res
+            
+            if res is None:
+                print(f"  WARNING: No result for {name}")
+                results[name] = []
+                continue
             
             # Platform-specific threshold adjustment
             if platform.system() == 'Windows':
@@ -128,13 +135,21 @@ class ImageDetector:
                     setattr(self, f'_saved_{name}', True)
             
             # For SQDIFF_NORMED, we need to find minimums
-            # But since we converted score to 1-min for comparison, use the original res
-            if 'SQDIFF' in best_method:
-                # For SQDIFF methods, find values below threshold (lower is better)
+            if best_method_type == cv2.TM_SQDIFF_NORMED:
+                # For SQDIFF, find values below threshold (lower is better in original res)
                 loc = np.where(res <= (1 - actual_threshold))
+                if not hasattr(self, f'_debug_{name}'):
+                    print(f"    SQDIFF: Looking for values <= {1-actual_threshold:.3f}")
+                    print(f"    Min value in res: {np.min(res):.3f}, Max: {np.max(res):.3f}")
+                    setattr(self, f'_debug_{name}', True)
             else:
                 # For other methods, find values above threshold (higher is better)
                 loc = np.where(res >= actual_threshold)
+                if not hasattr(self, f'_debug_{name}'):
+                    print(f"    Looking for values >= {actual_threshold:.3f}")
+                    print(f"    Max value in res: {np.max(res):.3f}, Min: {np.min(res):.3f}")
+                    print(f"    Number of pixels above threshold: {np.sum(res >= actual_threshold)}")
+                    setattr(self, f'_debug_{name}', True)
             
             matches = []
             for pt in zip(*loc[::-1]):
