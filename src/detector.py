@@ -84,10 +84,11 @@ class ImageDetector:
                 continue
             
             # Try multiple matching methods
+            # Order matters - TM_CCOEFF_NORMED is usually best for icons
             methods = [
                 ('TM_CCOEFF_NORMED', cv2.TM_CCOEFF_NORMED),
-                ('TM_CCORR_NORMED', cv2.TM_CCORR_NORMED),
-                ('TM_SQDIFF_NORMED', cv2.TM_SQDIFF_NORMED)
+                ('TM_SQDIFF_NORMED', cv2.TM_SQDIFF_NORMED),
+                ('TM_CCORR_NORMED', cv2.TM_CCORR_NORMED)  # Last resort, tends to give too many matches
             ]
             
             best_score = 0
@@ -128,19 +129,19 @@ class ImageDetector:
                     setattr(self, f'_saved_{name}', True)
             
             # For template matching, we need to be more selective
-            # TM_CCORR_NORMED tends to have very high baseline values
-            if best_method == 'TM_CCORR_NORMED':
-                # For CCORR, use a much higher threshold
-                actual_threshold = 0.95  # Very high threshold for CCORR
-            elif best_method == 'TM_CCOEFF_NORMED':
-                # For CCOEFF, use moderate threshold
-                actual_threshold = 0.6
+            # Use method-specific thresholds that work well in practice
+            if best_method == 'TM_CCOEFF_NORMED':
+                # CCOEFF is good for icons, use moderate threshold
+                actual_threshold = 0.4  # Lower threshold for better detection
             elif best_method_type == cv2.TM_SQDIFF_NORMED:
-                # For SQDIFF, use low threshold (inverted)
-                actual_threshold = 0.2
+                # For SQDIFF, use low threshold (lower is better)
+                actual_threshold = 0.1  # Very low for SQDIFF
+            elif best_method == 'TM_CCORR_NORMED':
+                # CCORR has very high baseline, needs extremely high threshold
+                actual_threshold = 0.98  # Even higher to reduce false positives
             else:
                 # Default threshold
-                actual_threshold = 0.7
+                actual_threshold = 0.5
             
             if not hasattr(self, f'_thresh_debug_{name}'):
                 print(f"    Using threshold: {actual_threshold:.3f} for method {best_method}")
