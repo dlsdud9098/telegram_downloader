@@ -83,33 +83,14 @@ class ImageDetector:
                 results[name] = []
                 continue
             
-            # Try multiple matching methods
-            # Order matters - TM_CCOEFF_NORMED is usually best for icons
-            methods = [
-                ('TM_CCOEFF_NORMED', cv2.TM_CCOEFF_NORMED),
-                ('TM_SQDIFF_NORMED', cv2.TM_SQDIFF_NORMED),
-                ('TM_CCORR_NORMED', cv2.TM_CCORR_NORMED)  # Last resort, tends to give too many matches
-            ]
+            # Use only TM_CCOEFF_NORMED for better accuracy
+            # Other methods give too many false positives
+            best_method = 'TM_CCOEFF_NORMED'
+            best_method_type = cv2.TM_CCOEFF_NORMED
             
-            best_score = 0
-            best_res = None
-            best_method = None
-            best_method_type = None
-            
-            for method_name, method in methods:
-                res = cv2.matchTemplate(gray_screen, template, method)
-                
-                if method == cv2.TM_SQDIFF_NORMED:
-                    # For SQDIFF, lower is better, so invert
-                    score = 1 - np.min(res)
-                else:
-                    score = np.max(res)
-                
-                if score > best_score:
-                    best_score = score
-                    best_res = res.copy()  # Make a copy to ensure we keep the result
-                    best_method = method_name
-                    best_method_type = method
+            res = cv2.matchTemplate(gray_screen, template, best_method_type)
+            best_score = np.max(res)
+            best_res = res
             
             # Use the best method result
             res = best_res
@@ -128,20 +109,9 @@ class ImageDetector:
                     cv2.imwrite(f"debug_template_{name}.jpg", template)
                     setattr(self, f'_saved_{name}', True)
             
-            # For template matching, we need to be more selective
-            # Use method-specific thresholds that work well in practice
-            if best_method == 'TM_CCOEFF_NORMED':
-                # CCOEFF is good for icons, use moderate threshold
-                actual_threshold = 0.4  # Lower threshold for better detection
-            elif best_method_type == cv2.TM_SQDIFF_NORMED:
-                # For SQDIFF, use low threshold (lower is better)
-                actual_threshold = 0.1  # Very low for SQDIFF
-            elif best_method == 'TM_CCORR_NORMED':
-                # CCORR has very high baseline, needs extremely high threshold
-                actual_threshold = 0.98  # Even higher to reduce false positives
-            else:
-                # Default threshold
-                actual_threshold = 0.5
+            # Use appropriate threshold for TM_CCOEFF_NORMED
+            # This method works best for icon detection
+            actual_threshold = 0.5  # Moderate threshold for CCOEFF
             
             if not hasattr(self, f'_thresh_debug_{name}'):
                 print(f"    Using threshold: {actual_threshold:.3f} for method {best_method}")
@@ -170,25 +140,20 @@ class ImageDetector:
             # Debug: show raw match count
             if raw_points and not hasattr(self, f'_raw_debug_{name}'):
                 print(f"    Raw matches found: {len(raw_points)}")
-                if len(raw_points) > 100:
-                    print(f"    WARNING: Too many matches! This might be a false positive.")
-                    # Only take the top matches based on actual scores
-                    if len(raw_points) > 50:
-                        # Get scores for each point and sort by score
-                        point_scores = []
-                        for pt in raw_points[:1000]:  # Limit to first 1000 to avoid memory issues
-                            if pt[1] < res.shape[0] and pt[0] < res.shape[1]:
-                                point_scores.append((pt, res[pt[1], pt[0]]))
-                        
-                        # Sort by score (higher is better for non-SQDIFF methods)
-                        if best_method_type == cv2.TM_SQDIFF_NORMED:
-                            point_scores.sort(key=lambda x: x[1])  # Lower is better
-                        else:
-                            point_scores.sort(key=lambda x: x[1], reverse=True)  # Higher is better
-                        
-                        # Take only top 20 matches
-                        raw_points = [ps[0] for ps in point_scores[:20]]
-                        print(f"    Reduced to top 20 matches by score")
+                if len(raw_points) > 30:
+                    print(f"    Reducing to top matches...")
+                    # Get scores for each point and sort by score
+                    point_scores = []
+                    for pt in raw_points[:500]:  # Limit to first 500 to avoid memory issues
+                        if pt[1] < res.shape[0] and pt[0] < res.shape[1]:
+                            point_scores.append((pt, res[pt[1], pt[0]]))
+                    
+                    # Sort by score (higher is better for CCOEFF)
+                    point_scores.sort(key=lambda x: x[1], reverse=True)
+                    
+                    # Take only top 10 matches for more accuracy
+                    raw_points = [ps[0] for ps in point_scores[:10]]
+                    print(f"    Reduced to top 10 matches by score")
                 setattr(self, f'_raw_debug_{name}', True)
             
             for pt in raw_points:
