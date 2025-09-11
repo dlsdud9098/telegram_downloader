@@ -128,9 +128,12 @@ class ImageDetector:
                     setattr(self, f'_saved_{name}', True)
             
             # For SQDIFF_NORMED, we need to find minimums
-            if best_method == 'TM_SQDIFF_NORMED':
-                loc = np.where(res <= 1 - actual_threshold)
+            # But since we converted score to 1-min for comparison, use the original res
+            if 'SQDIFF' in best_method:
+                # For SQDIFF methods, find values below threshold (lower is better)
+                loc = np.where(res <= (1 - actual_threshold))
             else:
+                # For other methods, find values above threshold (higher is better)
                 loc = np.where(res >= actual_threshold)
             
             matches = []
@@ -141,6 +144,8 @@ class ImageDetector:
             
             if matches:
                 matches = self._remove_duplicates(matches)
+                if matches:  # After removing duplicates
+                    print(f"    Found {len(matches)} {name} image(s)")
             
             results[name] = matches
             
